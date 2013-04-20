@@ -1,45 +1,24 @@
 ﻿open System
 open System.IO
-open System.Text
-open System.Security.Cryptography
-
-let MD5 = new MD5CryptoServiceProvider()
-
-let alignMD5 (md : string) = 
-    md.Replace("-","").ToLower() 
-
-let md5 (s : string) = 
-    Encoding.UTF8.GetBytes s
-    |> MD5.ComputeHash
-    |> BitConverter.ToString
-    |> alignMD5
-
-let md5File (s : string) = 
-    use fs = File.OpenRead s
-    use stream = new BufferedStream(fs, 1024 * 10)
-    stream
-    |> MD5.ComputeHash
-    |> BitConverter.ToString
-    |> alignMD5
-
-type FileData = {
-    Filename : string;
-    Path : string;
-    Size : int64;
-    MD5 : string
-}
+open Structs
+open MD5
 
 let rec getAllFileNames path =
-    seq {   yield! Directory.GetFiles(path)
-            for dir in Directory.GetDirectories(path) do 
-                yield! getAllFileNames dir }
+    seq { yield! Directory.GetFiles(path)
+          for dir in Directory.GetDirectories(path) do 
+            yield! getAllFileNames dir }
 
-let loadFile path =
-    let f = new FileInfo(path)
-    { Filename = f.Name; Path = f.Directory.FullName; Size = f.Length; MD5 = path |> md5File }
+let loadFilesData files =
+    Seq.map (fun path -> 
+        let f = new FileInfo(path)
+        { Filename = f.Name; Path = f.Directory.FullName; Size = f.Length; MD5 = path |> md5File })
+        files
 
-let loadAllFileData files =
-    Seq.map loadFile files 
+let isDuplicate f1 f2 =
+    f1.Equals(f2) = false && f1.Filename = f2.Filename && f1.Size = f2.Size
+
+let findDuplicates f files =
+    Seq.filter (fun d -> isDuplicate f d) files
 
 [<EntryPoint>]
 let main argv =     
@@ -47,9 +26,22 @@ let main argv =
 
     let allFiles = 
         getAllFileNames path 
-        |> loadAllFileData
+        |> loadFilesData
 
-    Seq.iter (fun d -> Console.WriteLine d.MD5) allFiles 
+    Seq.iter (fun d -> Console.WriteLine (d.ToString())) allFiles 
+
+    Console.WriteLine ""
+
+    let findDuplicatesInAllFiles f = 
+        findDuplicates f allFiles
+
+    allFiles
+        |> Seq.map (fun f -> (f, findDuplicatesInAllFiles f))
+        |> Seq.iter (fun f -> 
+            Console.WriteLine Environment.NewLine
+            Console.WriteLine (fst(f).ToString())
+            snd(f) |> Seq.iter (fun d -> Console.WriteLine ("\t" + d.ToString()))
+            )
 
     Console.ReadLine() |> ignore
 
